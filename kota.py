@@ -509,8 +509,52 @@ def _claude_durum_yolu() -> Path:
     return Path(os.environ.get("KOTA_CLAUDE_DURUM") or (Path.home() / ".kota" / "claude_durum.json"))
 
 
+def _claude_masaustu_ornekleri():
+    """Masaüstü geçmişindeki ölçümleri kaydedildikleri zamanla döndürür."""
+    yollar = []
+    if os.environ.get("LOCALAPPDATA"):
+        kok = Path(os.environ["LOCALAPPDATA"]) / "Claude-Data"
+        yollar.extend(kok.glob("claude_*/plan-usage-history.json"))
+    if os.environ.get("APPDATA"):
+        yollar.append(Path(os.environ["APPDATA"]) / "Claude" / "plan-usage-history.json")
+    for yol in yollar:
+        try:
+            gecmis = json.loads(yol.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(gecmis, dict) or not isinstance(gecmis.get("samples"), list):
+            continue
+        for ornek in gecmis["samples"]:
+            if not isinstance(ornek, dict) or not isinstance(ornek.get("u"), dict):
+                continue
+            zaman = ornek.get("t")
+            if type(zaman) is not int or not 0 < zaman < 253402214400000:
+                continue
+            limitler = {}
+            for alan, ad in (("fh", "five_hour"), ("sd", "seven_day")):
+                yuzde = ornek["u"].get(alan)
+                if type(yuzde) in (int, float) and 0 <= yuzde <= 100:
+                    limitler[ad] = {"used_percentage": yuzde}
+            if limitler:
+                yield zaman / 1000, yol, "statusline", {"rate_limits": limitler}
+
+
+def _claude_reset_zamani(tur: str, kaynak: dict, alan: str, ad: str) -> float | None:
+    try:
+        if tur == "statusline":
+            return float(kaynak["rate_limits"][alan]["resets_at"])
+        for pencere in kaynak.get("windows", []):
+            if isinstance(pencere, dict) and _claude_pencere_adi_coz(str(pencere.get("label")))[0] == ad:
+                zaman = _iso_coz(pencere.get("resetsAt"))
+                if zaman is not None:
+                    return zaman.timestamp()
+    except (KeyError, TypeError, ValueError, OverflowError, OSError):
+        pass
+    return None
+
+
 def claude_oku(simdi: datetime | None = None) -> dict[str, Any]:
-    """En yeni Claude kaynağını (claude.json veya statusLine) okur."""
+    """En yeni yerel Claude ölçümünü okur."""
     simdi_dt = _simdi_al(simdi)
     dizin = veri_dizini()
     ayar = _ayar_oku(dizin)
@@ -526,6 +570,7 @@ def claude_oku(simdi: datetime | None = None) -> dict[str, Any]:
             pass
     adaylar.sort(key=lambda a: a[0], reverse=True)
     secilen: tuple[float, Path, str, dict[str, Any]] | None = None
+    kaynaklar: list[tuple[str, dict]] = []
     for mtime, yol, tur in adaylar:
         try:
             veri = json.loads(yol.read_text(encoding="utf-8"))
@@ -535,8 +580,22 @@ def claude_oku(simdi: datetime | None = None) -> dict[str, Any]:
             continue
         if tur == "statusline" and not isinstance(veri.get("rate_limits"), dict):
             continue
-        secilen = (mtime, yol, tur, veri)
-        break
+        if secilen is None:
+            secilen = (mtime, yol, tur, veri)
+        kaynaklar.append((tur, veri))
+    masaustu = max(_claude_masaustu_ornekleri(), key=lambda kayit: kayit[0], default=None)
+    if masaustu is not None and (secilen is None or masaustu[0] > secilen[0]):
+        secilen = masaustu
+        # Masaüstü yüzdeleri günceldir, sıfırlanma saatleri diğer kaynaklarda bulunur.
+        for alan, ad, dakika in (("five_hour", "5s", 300), ("seven_day", "haftalik", 10080)):
+            pencere = masaustu[3]["rate_limits"].get(alan)
+            if pencere is None:
+                continue
+            for tur, kaynak in kaynaklar:
+                reset = _claude_reset_zamani(tur, kaynak, alan, ad)
+                if reset is not None and reset - dakika * 60 <= masaustu[0] < reset:
+                    pencere["resets_at"] = reset
+                    break
     if secilen is None:
         return _hata_saglayici("claude", "claude", "Claude verisi yok (durum satırı kurulu değil ya da Claude Code çalışmadı)", hak)
 

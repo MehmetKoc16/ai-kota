@@ -25,6 +25,8 @@ public sealed class TepsiUygulamasi : ApplicationContext
     private DateTimeOffset _sonrakiYenileme = DateTimeOffset.Now.AddMinutes(5);
     private string? _yenilemeHatasi;
     private bool _yenileniyor;
+    private DateTime _claudeYazmaZamani;
+    private DateTimeOffset? _claudeSifirlanma;
     private bool _kapatiliyor;
 
     public TepsiUygulamasi()
@@ -79,8 +81,21 @@ public sealed class TepsiUygulamasi : ApplicationContext
             VeriyiYenidenYukle();
         };
 
-        _otoYenileTimer = new System.Windows.Forms.Timer { Interval = 5 * 60 * 1000 };
-        _otoYenileTimer.Tick += (_, _) => YenilemeyiBaslat();
+        _claudeYazmaZamani = ClaudeSonYazmaZamani();
+        _otoYenileTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+        _otoYenileTimer.Tick += (_, _) =>
+        {
+            if (_yenileniyor)
+                return;
+            var simdi = DateTimeOffset.Now;
+            var yazma = ClaudeSonYazmaZamani();
+            if (yazma != _claudeYazmaZamani || simdi >= _sonrakiYenileme || simdi >= _claudeSifirlanma)
+            {
+                _claudeYazmaZamani = yazma;
+                _claudeSifirlanma = null;
+                YenilemeyiBaslat();
+            }
+        };
         _otoYenileTimer.Start();
 
         _dakikaTimer = new System.Windows.Forms.Timer { Interval = 60 * 1000 };
@@ -165,9 +180,33 @@ public sealed class TepsiUygulamasi : ApplicationContext
         }
     }
 
+    private static DateTime ClaudeSonYazmaZamani()
+    {
+        string dosya = "plan-usage-history.json";
+        string kok = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Claude-Data");
+        string roaming = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude", dosya);
+        try
+        {
+            var son = File.GetLastWriteTimeUtc(roaming);
+            if (Directory.Exists(kok))
+                foreach (var dizin in Directory.EnumerateDirectories(kok, "claude_*"))
+                {
+                    var zaman = File.GetLastWriteTimeUtc(Path.Combine(dizin, dosya));
+                    if (zaman > son)
+                        son = zaman;
+                }
+            return son;
+        }
+        catch (IOException) { return DateTime.MinValue; }
+        catch (UnauthorizedAccessException) { return DateTime.MinValue; }
+    }
+
     private void VeriyiYenidenYukle()
     {
         _sonVeri = KotaVerisi.Oku(_kotaJsonYolu);
+        _claudeSifirlanma = _sonVeri?.Saglayicilar?.FirstOrDefault(s => s.Ad == "claude")
+            ?.Pencereler?.Select(p => p.Sifirlanma)
+            .Where(zaman => zaman > _sonVeri.Olusturma).Min();
 
         var yeniSimge = SimgeCizici.Ciz(_sonVeri);
         var eskiSimge = _mevcutSimge;

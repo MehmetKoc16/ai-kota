@@ -142,7 +142,9 @@ class TestKota(unittest.TestCase):
                 "KOTA_DIZIN": str(self.kota_dizin),
                 "KOTA_CODEX_DIZIN": str(self.codex_dizin),
                 "KOTA_CLAUDE_DURUM": str(self.claude_durum),
-"KOTA_CLAUDE_ELLE": str(Path(self.gecici.name) / "kota_ev" / "claude.json"),
+                "KOTA_CLAUDE_ELLE": str(Path(self.gecici.name) / "kota_ev" / "claude.json"),
+                "LOCALAPPDATA": self.gecici.name,
+                "APPDATA": self.gecici.name,
             },
         )
         self.ortam_yama.start()
@@ -219,6 +221,43 @@ class TestKota(unittest.TestCase):
         self.assertEqual(kota.claude_oku(SIMDI)["pencereler"][0]["kullanilan"], 5.0)
         os.utime(legacy, (SIMDI.timestamp() + 20, SIMDI.timestamp() + 20))
         self.assertEqual(kota.claude_oku(SIMDI)["pencereler"][0]["kullanilan"], 22.0)
+
+    def test_claude_masaustu_olcum_zamani(self) -> None:
+        yol = Path(self.gecici.name) / "Claude-Data/claude_test/plan-usage-history.json"
+        yol.parent.mkdir(parents=True)
+        zaman = int(SIMDI.timestamp() * 1000)
+        yol.write_text(json.dumps({"samples": [
+            {"t": zaman, "u": {"fh": 100, "sd": 14}},
+            {"t": zaman - 1000, "u": {"fh": 67}},
+        ]}), encoding="utf-8")
+        sonuc = kota.claude_oku(SIMDI)
+        self.assertEqual(sonuc["etiket"], "dolu")
+        self.assertEqual([p["kullanilan"] for p in sonuc["pencereler"]], [100, 14])
+        self.assertEqual(sonuc["veri_zamani"], kota._iso_yaz(SIMDI))
+        self.claude_durum.write_text(json.dumps({"rate_limits": {"five_hour": {"used_percentage": 2}}}))
+        os.utime(self.claude_durum, (SIMDI.timestamp() + 1,) * 2)
+        self.assertEqual(kota.claude_oku(SIMDI)["pencereler"][0]["kullanilan"], 2)
+
+    def test_masaustu_yuzdesi_sifirlanmayi_gecmez(self) -> None:
+        yol = Path(self.gecici.name) / "Claude/plan-usage-history.json"
+        yol.parent.mkdir()
+        reset = SIMDI.timestamp()
+        def masaustu_yaz(zaman, yuzde):
+            yol.write_text(json.dumps({"samples": [
+                {"t": int(zaman * 1000), "u": {"fh": yuzde, "sd": 14}}
+            ]}))
+        legacy = self.kota_dizin / "claude.json"
+        legacy.write_text(json.dumps({"windows": [
+            {"label": "5-hour limit", "resetsAt": SIMDI.isoformat(), "percentUsed": 67}
+        ]}))
+        os.utime(legacy, (reset - 600,) * 2)
+        masaustu_yaz(reset - 120, 100)
+        self.assertEqual(kota.claude_oku(SIMDI - timedelta(seconds=1))["etiket"], "dolu")
+        self.assertEqual([p["kullanilan"] for p in kota.claude_oku(SIMDI)["pencereler"]], [0, 14])
+        masaustu_yaz(reset + 1, 52)
+        sonuc = kota.claude_oku(SIMDI + timedelta(seconds=2))
+        self.assertEqual(sonuc["pencereler"][0]["kullanilan"], 52)
+        self.assertIsNone(sonuc["pencereler"][0]["sifirlanma"])
 
     def test_claude_veri_yok(self) -> None:
         """NEDEN: İki Claude kaynağı da yokken yeni hata açıklamasının verildiğini doğrular."""
