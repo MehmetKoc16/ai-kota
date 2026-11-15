@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>KotaTepsi</AssemblyName>
+    <RootNamespace>KotaTepsi</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="tepsi.Tests\**" />
+    <EmbeddedResource Remove="tepsi.Tests\**" />
+    <None Remove="tepsi.Tests\**" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,133 @@
+{
+  "olusturma": "2026-11-15T16:33:01+03:00",
+  "saglayicilar": [
+    {
+      "ad": "codex",
+      "aile": "codex",
+      "durum": "ok",
+      "hata": null,
+      "veri_zamani": "2026-11-15T16:33:01+03:00",
+      "etiket": "normal",
+      "sifirlama_hakki": null,
+      "pencereler": [
+        {
+          "ad": "5s",
+          "kullanilan": 35.0,
+          "sifirlanma": "2026-11-15T18:43:01+03:00",
+          "pencere_dk": 300,
+          "tempo": {
+            "gecen_oran": 0.567,
+            "sifirlanmada_tahmin": 61.8,
+            "biter": false,
+            "bitis": null
+          }
+        },
+        {
+          "ad": "haftalik",
+          "kullanilan": 42.0,
+          "sifirlanma": "2026-11-18T16:33:01+03:00",
+          "pencere_dk": 10080,
+          "tempo": {
+            "gecen_oran": 0.571,
+            "sifirlanmada_tahmin": 73.5,
+            "biter": false,
+            "bitis": null
+          }
+        }
+      ]
+    },
+    {
+      "ad": "claude",
+      "aile": "claude",
+      "durum": "ok",
+      "hata": null,
+      "veri_zamani": "2026-11-15T16:33:01+03:00",
+      "etiket": "dar",
+      "sifirlama_hakki": null,
+      "pencereler": [
+        {
+          "ad": "5s",
+          "kullanilan": 22.0,
+          "sifirlanma": "2026-11-15T19:53:01+03:00",
+          "pencere_dk": 300,
+          "tempo": {
+            "gecen_oran": 0.333,
+            "sifirlanmada_tahmin": 66.0,
+            "biter": false,
+            "bitis": null
+          }
+        },
+        {
+          "ad": "haftalik",
+          "kullanilan": 74.0,
+          "sifirlanma": "2026-11-17T16:33:01+03:00",
+          "pencere_dk": 10080,
+          "tempo": {
+            "gecen_oran": 0.714,
+            "sifirlanmada_tahmin": 103.6,
+            "biter": true,
+            "bitis": "2026-11-17T10:42:44.783784+03:00"
+          }
+        }
+      ]
+    },
+    {
+      "ad": "gemini",
+      "aile": "agy",
+      "durum": "ok",
+      "hata": null,
+      "veri_zamani": "2026-11-15T16:33:01+03:00",
+      "etiket": "bol",
+      "sifirlama_hakki": null,
+      "pencereler": [
+        {
+          "ad": "5s",
+          "kullanilan": 29.0,
+          "sifirlanma": "2026-11-15T19:03:01+03:00",
+          "pencere_dk": 300,
+          "tempo": {
+            "gecen_oran": 0.5,
+            "sifirlanmada_tahmin": 58.0,
+            "biter": false,
+            "bitis": null
+          }
+        },
+        {
+          "ad": "haftalik",
+          "kullanilan": 18.0,
+          "sifirlanma": "2026-11-20T16:33:01+03:00",
+          "pencere_dk": 10080,
+          "tempo": {
+            "gecen_oran": 0.286,
+            "sifirlanmada_tahmin": 63.0,
+            "biter": false,
+            "bitis": null
+          }
+        }
+      ]
+    },
+    {
+      "ad": "argon",
+      "aile": "agy",
+      "durum": "ok",
+      "hata": null,
+      "veri_zamani": "2026-11-15T16:33:01+03:00",
+      "etiket": "bol",
+      "sifirlama_hakki": null,
+      "pencereler": [
+        {
+          "ad": "haftalik",
+          "kullanilan": 10.0,
+          "sifirlanma": "2026-11-20T16:33:01+03:00",
+          "pencere_dk": 10080,
+          "tempo": {
+            "gecen_oran": 0.286,
+            "sifirlanmada_tahmin": 35.0,
+            "biter": false,
+            "bitis": null
+          }
+        }
+      ]
+    }
+  ]
+}

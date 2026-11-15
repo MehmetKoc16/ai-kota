@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "plan": "Pro",
+  "windows": [
+    {
+      "label": "5-hour limit",
+      "percentUsed": 22,
+      "resetsAt": "2026-01-15T13:00:00.000Z"
+    },
+    {
+      "label": "Weekly · all models",
+      "percentUsed": 58,
+      "resetsAt": "2026-01-19T15:00:00.000Z"
+    }
+  ]
+}
