@@ -499,6 +499,11 @@ def _claude_pencere_adi_coz(etiket: str) -> tuple[str, int | None]:
     return etiket.strip().lower().replace(" ", "-"), None
 
 
+def _claude_elle_yolu() -> Path:
+    """get_usage biçimindeki elle yazılan claude.json yolu (AppData dışında, MSIX yönlendirmesine takılmaz)."""
+    return Path(os.environ.get("KOTA_CLAUDE_ELLE") or (Path.home() / ".kota" / "claude.json"))
+
+
 def _claude_durum_yolu() -> Path:
     """Claude Code statusLine durum dosyasının yolunu döndürür."""
     return Path(os.environ.get("KOTA_CLAUDE_DURUM") or (Path.home() / ".kota" / "claude_durum.json"))
@@ -514,7 +519,7 @@ def claude_oku(simdi: datetime | None = None) -> dict[str, Any]:
 
     durum_yolu = _claude_durum_yolu()
     adaylar: list[tuple[float, Path, str]] = []
-    for yol, tur in ((claude_yolu, "legacy"), (durum_yolu, "statusline")):
+    for yol, tur in ((claude_yolu, "legacy"), (_claude_elle_yolu(), "legacy"), (durum_yolu, "statusline")):
         try:
             adaylar.append((yol.stat().st_mtime, yol, tur))
         except OSError:
@@ -708,7 +713,8 @@ def main(argv: list[str] | None = None) -> int:
     arglar = ayristirici.parse_args(argv)
 
     if arglar.claude_dosyasi:
-        hedef_claude = veri_dizini() / "claude.json"
+        hedef_claude = _claude_elle_yolu()
+        hedef_claude.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(arglar.claude_dosyasi, hedef_claude)
 
     simdi_dt = _simdi_al()

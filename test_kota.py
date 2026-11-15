@@ -142,6 +142,7 @@ class TestKota(unittest.TestCase):
                 "KOTA_DIZIN": str(self.kota_dizin),
                 "KOTA_CODEX_DIZIN": str(self.codex_dizin),
                 "KOTA_CLAUDE_DURUM": str(self.claude_durum),
+"KOTA_CLAUDE_ELLE": str(Path(self.gecici.name) / "kota_ev" / "claude.json"),
             },
         )
         self.ortam_yama.start()
@@ -273,6 +274,16 @@ class TestKota(unittest.TestCase):
         self.assertEqual(sonuc["durum"], "ok")
         adlar = [p["ad"] for p in sonuc["pencereler"]]
         self.assertEqual(adlar, ["5s", "haftalik", "haftalik-fable"])
+
+    def test_claude_ev_dizinindeki_elle_dosya_okunur(self) -> None:
+        """NEDEN: Claude masaüstü (MSIX) AppData yazımlarını yönlendirdiği için get_usage verisi ~/.kota/claude.json'dan da okunmalı."""
+        elle = Path(os.environ["KOTA_CLAUDE_ELLE"])
+        elle.parent.mkdir(parents=True, exist_ok=True)
+        elle.write_text(json.dumps(ORNEK_CLAUDE_JSON), encoding="utf-8")
+        os.utime(elle, (SIMDI.timestamp(), SIMDI.timestamp()))
+        sonuc = kota.claude_oku(simdi=SIMDI)
+        self.assertEqual(sonuc["durum"], "ok")
+        self.assertEqual([p["ad"] for p in sonuc["pencereler"]], ["5s", "haftalik", "haftalik-fable"])
 
     def test_sifirlanma_gecmiste(self) -> None:
         """NEDEN: Sıfırlanma zamanı geçmişte kalan pencerenin kullanilan=0 ve tempo=None olduğunu doğrular."""
