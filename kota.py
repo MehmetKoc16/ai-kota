@@ -230,14 +230,13 @@ def _sondan_satirlar(dosya_yolu: Path, parca_boyut: int = 8192):
                 yield metin
 
 
-def _en_yeni_jsonl_bul(kok_dizin: Path) -> Path | None:
-    """Verilen dizin altında değiştirilme zamanı en yeni .jsonl dosyasını bulur."""
+def _en_yeni_jsonl_listesi(kok_dizin: Path, adet: int = 10) -> list[Path]:
+    """Değiştirilme zamanına göre en yeni JSONL dosyalarını döndürür."""
     if not kok_dizin.exists():
-        return None
-    en_yeni_yol: Path | None = None
-    en_yeni_mtime = -1.0
-    for kok, _, dosyalar in os.walk(kok_dizin):
-        for ad in dosyalar:
+        return []
+    dosyalar: list[tuple[float, Path]] = []
+    for kok, _, adlar in os.walk(kok_dizin):
+        for ad in adlar:
             if not ad.endswith(".jsonl"):
                 continue
             yol = Path(kok) / ad
@@ -245,10 +244,9 @@ def _en_yeni_jsonl_bul(kok_dizin: Path) -> Path | None:
                 mtime = os.path.getmtime(yol)
             except OSError:
                 continue
-            if mtime > en_yeni_mtime:
-                en_yeni_mtime = mtime
-                en_yeni_yol = yol
-    return en_yeni_yol
+            dosyalar.append((mtime, yol))
+    dosyalar.sort(key=lambda kayit: kayit[0], reverse=True)
+    return [yol for _, yol in dosyalar[:max(0, adet)]]
 
 
 def codex_oku(simdi: datetime | None = None) -> dict[str, Any]:
@@ -260,27 +258,32 @@ def codex_oku(simdi: datetime | None = None) -> dict[str, Any]:
     codex_ortam = os.environ.get("KOTA_CODEX_DIZIN")
     codex_dizini = Path(codex_ortam) if codex_ortam else (Path.home() / ".codex" / "sessions")
 
-    en_yeni = _en_yeni_jsonl_bul(codex_dizini)
-    if en_yeni is None:
+    en_yeni_dosyalar = _en_yeni_jsonl_listesi(codex_dizini)
+    if not en_yeni_dosyalar:
         return _hata_saglayici("codex", "codex", "Codex oturum dosyası bulunamadı", hak)
 
     bulunan_satir: dict[str, Any] | None = None
     rate_limits: dict[str, Any] | None = None
 
-    for satir in _sondan_satirlar(en_yeni):
-        try:
-            veri = json.loads(satir)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(veri, dict):
-            continue
-        payload = veri.get("payload")
-        if not isinstance(payload, dict):
-            continue
-        rl = payload.get("rate_limits")
-        if isinstance(rl, dict) and ("primary" in rl or "secondary" in rl):
-            bulunan_satir = veri
-            rate_limits = rl
+    en_yeni = en_yeni_dosyalar[0]
+    for dosya in en_yeni_dosyalar:
+        for satir in _sondan_satirlar(dosya):
+            try:
+                veri = json.loads(satir)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(veri, dict):
+                continue
+            payload = veri.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            rl = payload.get("rate_limits")
+            if isinstance(rl, dict) and ("primary" in rl or "secondary" in rl):
+                bulunan_satir = veri
+                rate_limits = rl
+                en_yeni = dosya
+                break
+        if bulunan_satir is not None:
             break
 
     if bulunan_satir is None or rate_limits is None:
@@ -496,41 +499,70 @@ def _claude_pencere_adi_coz(etiket: str) -> tuple[str, int | None]:
     return etiket.strip().lower().replace(" ", "-"), None
 
 
+def _claude_durum_yolu() -> Path:
+    """Claude Code statusLine durum dosyasının yolunu döndürür."""
+    return Path(os.environ.get("KOTA_CLAUDE_DURUM") or (Path.home() / ".kota" / "claude_durum.json"))
+
+
 def claude_oku(simdi: datetime | None = None) -> dict[str, Any]:
-    """Veri dizinindeki claude.json dosyasını okur."""
+    """En yeni Claude kaynağını (claude.json veya statusLine) okur."""
     simdi_dt = _simdi_al(simdi)
     dizin = veri_dizini()
     ayar = _ayar_oku(dizin)
     hak = _sifirlama_hakki_al(ayar, "claude")
     claude_yolu = dizin / "claude.json"
 
-    if not claude_yolu.exists():
-        return _hata_saglayici("claude", "claude", "claude.json yok (orkestratör yazmalı)", hak)
+    durum_yolu = _claude_durum_yolu()
+    adaylar: list[tuple[float, Path, str]] = []
+    for yol, tur in ((claude_yolu, "legacy"), (durum_yolu, "statusline")):
+        try:
+            adaylar.append((yol.stat().st_mtime, yol, tur))
+        except OSError:
+            pass
+    adaylar.sort(key=lambda a: a[0], reverse=True)
+    secilen: tuple[float, Path, str, dict[str, Any]] | None = None
+    for mtime, yol, tur in adaylar:
+        try:
+            veri = json.loads(yol.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(veri, dict):
+            continue
+        if tur == "statusline" and not isinstance(veri.get("rate_limits"), dict):
+            continue
+        secilen = (mtime, yol, tur, veri)
+        break
+    if secilen is None:
+        return _hata_saglayici("claude", "claude", "Claude verisi yok (durum satırı kurulu değil ya da Claude Code çalışmadı)", hak)
 
-    try:
-        veri = json.loads(claude_yolu.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return _hata_saglayici("claude", "claude", f"claude.json okunamadı: {exc}", hak)
-
-    if not isinstance(veri, dict):
-        return _hata_saglayici("claude", "claude", "claude.json biçimi geçersiz", hak)
+    mtime, claude_yolu, kaynak_turu, veri = secilen
 
     veri_zamani_dt = datetime.fromtimestamp(
-        os.path.getmtime(claude_yolu), tz=timezone.utc
+        mtime, tz=timezone.utc
     ).astimezone(simdi_dt.tzinfo)
 
     pencereler: list[dict[str, Any]] = []
-    for pencere in veri.get("windows", []):
-        if not isinstance(pencere, dict):
-            continue
-        yuzde = pencere.get("percentUsed")
-        if yuzde is None:
-            continue
-        pencere_adi, pencere_dk = _claude_pencere_adi_coz(str(pencere.get("label", "")))
-        sifirlanma_dt = _iso_coz(pencere.get("resetsAt"), simdi_dt.tzinfo)
-        pencereler.append(
-            _pencere_olustur(pencere_adi, float(yuzde), sifirlanma_dt, pencere_dk, simdi_dt)
-        )
+    if kaynak_turu == "statusline":
+        eslemeler = (("five_hour", "5s", 300), ("seven_day", "haftalik", 10080))
+        for alan, ad, dakika in eslemeler:
+            pencere = veri["rate_limits"].get(alan)
+            if not isinstance(pencere, dict) or pencere.get("used_percentage") is None:
+                continue
+            reset = pencere.get("resets_at")
+            sifirlanma = datetime.fromtimestamp(float(reset), tz=timezone.utc).astimezone(simdi_dt.tzinfo) if reset is not None else None
+            pencereler.append(_pencere_olustur(ad, float(pencere["used_percentage"]), sifirlanma, dakika, simdi_dt))
+    else:
+        for pencere in veri.get("windows", []):
+            if not isinstance(pencere, dict):
+                continue
+            yuzde = pencere.get("percentUsed")
+            if yuzde is None:
+                continue
+            pencere_adi, pencere_dk = _claude_pencere_adi_coz(str(pencere.get("label", "")))
+            sifirlanma_dt = _iso_coz(pencere.get("resetsAt"), simdi_dt.tzinfo)
+            pencereler.append(
+                _pencere_olustur(pencere_adi, float(yuzde), sifirlanma_dt, pencere_dk, simdi_dt)
+            )
 
     bayat = (simdi_dt - veri_zamani_dt) > timedelta(minutes=60)
     return {

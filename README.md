@@ -73,6 +73,14 @@ The data directory is `%LOCALAPPDATA%\kota\` (configurable via `KOTA_DIZIN`). Th
 | Google Antigravity CLI (`agy`) | `agy -p "/usage" --output-format json` | 120-second cache |
 | Claude Code (optional) | `claude.json` in the data directory | Written by the user or an automation script using the Claude Code desktop app usage card window format (`label`, `percentUsed`, `resetsAt`). When missing, the Claude card shows `claude.json yok` |
 
+To collect Claude Code statusLine quotas, add this to `~/.claude/settings.json` (replace the path):
+
+```json
+"statusLine": {"type": "command", "command": "python C:/path/to/claude_durum_satiri.py"}
+```
+
+It updates only while a Claude Code session is open; the Fable-specific weekly limit is not available from this source.
+
 ## Limitations
 
 - Windows 10/11 only.

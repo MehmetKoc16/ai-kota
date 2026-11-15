@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import json
+import io
 import os
 from pathlib import Path
 import tempfile
@@ -11,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 import kota
+import claude_durum_satiri
 
 
 TZ_TR = timezone(timedelta(hours=3))
@@ -131,6 +133,7 @@ class TestKota(unittest.TestCase):
         self.gecici = tempfile.TemporaryDirectory()
         self.kota_dizin = Path(self.gecici.name) / "kota_veri"
         self.codex_dizin = Path(self.gecici.name) / "codex_oturum"
+        self.claude_durum = Path(self.gecici.name) / "claude_durum.json"
         self.kota_dizin.mkdir(parents=True, exist_ok=True)
         self.codex_dizin.mkdir(parents=True, exist_ok=True)
         self.ortam_yama = patch.dict(
@@ -138,6 +141,7 @@ class TestKota(unittest.TestCase):
             {
                 "KOTA_DIZIN": str(self.kota_dizin),
                 "KOTA_CODEX_DIZIN": str(self.codex_dizin),
+                "KOTA_CLAUDE_DURUM": str(self.claude_durum),
             },
         )
         self.ortam_yama.start()
@@ -175,6 +179,68 @@ class TestKota(unittest.TestCase):
         self.assertEqual(sonuc["durum"], "hata")
         self.assertEqual(sonuc["pencereler"], [])
         self.assertTrue(sonuc["hata"])
+
+    def test_codex_en_yeni_dosyada_rate_limits_yok(self) -> None:
+        """NEDEN: En yeni oturum boşken önceki oturumdaki kota kaydının kullanılmasını doğrular."""
+        eski = self.codex_dizin / "eski.jsonl"
+        yeni = self.codex_dizin / "yeni.jsonl"
+        eski.write_text(ORNEK_CODEX_SATIR + "\n", encoding="utf-8")
+        yeni.write_text('{"payload":{}}\n', encoding="utf-8")
+        os.utime(eski, (SIMDI.timestamp() - 20, SIMDI.timestamp() - 20))
+        os.utime(yeni, (SIMDI.timestamp(), SIMDI.timestamp()))
+        sonuc = kota.codex_oku(simdi=SIMDI)
+        self.assertEqual(sonuc["durum"], "ok")
+        self.assertEqual([p["kullanilan"] for p in sonuc["pencereler"]], [48.0, 82.0])
+
+    def test_codex_hicbir_dosyada_rate_limits_yok(self) -> None:
+        """NEDEN: Rate limit içermeyen tüm oturumlarda mevcut hata metninin korunduğunu doğrular."""
+        (self.codex_dizin / "oturum.jsonl").write_text('{"payload":{}}\n', encoding="utf-8")
+        sonuc = kota.codex_oku(simdi=SIMDI)
+        self.assertEqual(sonuc["hata"], "Codex dosyasında rate_limits yok")
+
+    def test_claude_durum_satiri_okuma(self) -> None:
+        """NEDEN: StatusLine yüzdelerinin, pencere adlarının ve reset zamanlarının çevrimini doğrular."""
+        veri = {"rate_limits": {"five_hour": {"used_percentage": 5, "resets_at": 1794772800}, "seven_day": {"used_percentage": 1, "resets_at": 1795100400}}}
+        self.claude_durum.write_text(json.dumps(veri), encoding="utf-8")
+        os.utime(self.claude_durum, (SIMDI.timestamp(), SIMDI.timestamp()))
+        sonuc = kota.claude_oku(simdi=SIMDI)
+        self.assertEqual([p["ad"] for p in sonuc["pencereler"]], ["5s", "haftalik"])
+        self.assertEqual([p["kullanilan"] for p in sonuc["pencereler"]], [5.0, 1.0])
+        self.assertEqual(sonuc["pencereler"][0]["sifirlanma"], datetime.fromtimestamp(1794772800, timezone.utc).astimezone(TZ_TR).isoformat())
+
+    def test_claude_daha_yeni_kaynak_secilir(self) -> None:
+        """NEDEN: İki Claude girdisinde mtime'ı yeni olan kaynağın her iki yönde seçildiğini doğrular."""
+        legacy = self.kota_dizin / "claude.json"
+        legacy.write_text(json.dumps({"windows": [{"label": "5-hour limit", "percentUsed": 22, "resetsAt": "2026-11-15T18:00:00+03:00"}]}), encoding="utf-8")
+        self.claude_durum.write_text(json.dumps({"rate_limits": {"five_hour": {"used_percentage": 5}}}), encoding="utf-8")
+        os.utime(legacy, (SIMDI.timestamp(), SIMDI.timestamp()))
+        os.utime(self.claude_durum, (SIMDI.timestamp() + 10, SIMDI.timestamp() + 10))
+        self.assertEqual(kota.claude_oku(SIMDI)["pencereler"][0]["kullanilan"], 5.0)
+        os.utime(legacy, (SIMDI.timestamp() + 20, SIMDI.timestamp() + 20))
+        self.assertEqual(kota.claude_oku(SIMDI)["pencereler"][0]["kullanilan"], 22.0)
+
+    def test_claude_veri_yok(self) -> None:
+        """NEDEN: İki Claude kaynağı da yokken yeni hata açıklamasının verildiğini doğrular."""
+        sonuc = kota.claude_oku(SIMDI)
+        self.assertEqual(sonuc["hata"], "Claude verisi yok (durum satırı kurulu değil ya da Claude Code çalışmadı)")
+
+    def test_durum_satiri_betigi_yazar(self) -> None:
+        """NEDEN: Betiğin bayt stdin'i dosyaya atomik yazıp tek satırlık özet verdiğini doğrular."""
+        veri = {"rate_limits": {"five_hour": {"used_percentage": 5}, "seven_day": {"used_percentage": 1}}}
+        stdin = io.TextIOWrapper(io.BytesIO(json.dumps(veri).encode("utf-8")), encoding="utf-8")
+        stdout = io.StringIO()
+        with patch("sys.stdin", stdin), patch("sys.stdout", stdout):
+            self.assertEqual(claude_durum_satiri.main(), 0)
+        self.assertTrue(self.claude_durum.exists())
+        self.assertEqual(stdout.getvalue().strip(), "Claude 5s %5 · hafta %1")
+
+    def test_durum_satiri_rate_limits_yok(self) -> None:
+        """NEDEN: Eksik rate_limits ve bozuk JSON için dosya yazılmadığını ve hatanın dışarı taşmadığını doğrular."""
+        for icerik in (b'{"spend_limit":1}', b'{bozuk'):
+            stdin = io.TextIOWrapper(io.BytesIO(icerik), encoding="utf-8")
+            with patch("sys.stdin", stdin), patch("sys.stdout", io.StringIO()):
+                self.assertEqual(claude_durum_satiri.main(), 0)
+            self.assertFalse(self.claude_durum.exists())
 
     def test_agy_ornek_okuma(self) -> None:
         """NEDEN: agy önbelleğinden gemini, argon ve agy-claude-gpt yüzdelerinin 1 ondalıkla hesaplandığını doğrular."""

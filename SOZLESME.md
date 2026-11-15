@@ -11,7 +11,8 @@ Veri klasörü: `%LOCALAPPDATA%\kota\` (yoksa oluşturulur). Testlerde `KOTA_DIZ
    Örnek çıktı: `ornek/agy_usage.json`. `command.data.groups[].buckets[]`: `window` ("5h"|"weekly"), `remaining_fraction`, `reset_time` (ISO).
    Grup adları: "Gemini Models" -> ad "gemini"; "Claude and GPT models" -> "agy-claude-gpt"; "Gemini 4 Argon" -> "argon".
    Sonuç `agy_onbellek.json`'a yazılır; 120 sn'den yeniyse agy yeniden çağrılmaz.
-3. Claude: orkestratörün yazdığı `claude.json` (örnek: `ornek/claude_usage.json`). Etiketler: "5-hour limit" -> "5s",
+3. Claude: veri dizinindeki orkestratör `claude.json` (örnek: `ornek/claude_usage.json`) veya `KOTA_CLAUDE_DURUM` / `~/.kota/claude_durum.json` konumundaki statusLine dosyası; ikisi varsa mtime'ı yeni olan geçerlidir. `claude_durum_satiri.py`, Claude Code stdin'indeki `rate_limits` alanını yazar. `five_hour` -> "5s",
+   `seven_day` -> "haftalik". `claude.json` etiketleri: "5-hour limit" -> "5s",
    "Weekly · all models" -> "haftalik", "Weekly · <Model>" -> "haftalik-<model küçük harf>". Veri zamanı = dosyanın değiştirilme zamanı.
 4. `ayar.json` (isteğe bağlı): `{"sifirlama_hakki": {"codex": true, "claude": true}}`.
 

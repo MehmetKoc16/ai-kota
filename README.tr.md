@@ -73,6 +73,14 @@ Veri klasörü `%LOCALAPPDATA%\kota\` konumundadır (`KOTA_DIZIN` ile değişir)
 | Google Antigravity CLI (`agy`) | `agy -p "/usage" --output-format json` | 120 sn önbellek |
 | Claude Code (isteğe bağlı) | Veri klasöründeki `claude.json` | Kullanıcı ya da bir otomasyon yazar; biçim Claude Code masaüstü uygulamasının kullanım kartındaki pencerelerdir (`label`, `percentUsed`, `resetsAt`). `claude.json` yoksa Claude kartı `claude.json yok` der |
 
+Claude Code statusLine kotalarını almak için `~/.claude/settings.json` dosyasına şu bölümü ekleyin (yolu değiştirin):
+
+```json
+"statusLine": {"type": "command", "command": "python C:/path/to/claude_durum_satiri.py"}
+```
+
+Veri yalnız Claude Code oturumu açıkken güncellenir; Fable'a özel haftalık limit bu kaynakta yoktur.
+
 ## Sınırlamalar
 
 - Yalnız Windows 10/11 desteklenir.
