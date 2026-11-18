@@ -71,7 +71,7 @@ Veri klasörü `%LOCALAPPDATA%\kota\` konumundadır (`KOTA_DIZIN` ile değişir)
 | --- | --- | --- |
 | OpenAI Codex CLI | `~/.codex/sessions/**/*.jsonl` içindeki son `rate_limits` kaydı | Yalnız Codex çalıştıkça güncellenir |
 | Google Antigravity CLI (`agy`) | `agy -p "/usage" --output-format json` | 120 sn önbellek |
-| Claude Code | Claude Code CLI SDK `get_usage` | Existing Claude Code login; no model call or quota usage; 120-second cache. |
+| Claude Code | Claude Code CLI SDK `get_usage` isteği | Claude Code'un kendi girişini kullanır; model çağrısı yapmaz, kota harcamaz; 120 sn önbellek. Başarısız olursa `claude.json` ve durum satırı dosyalarına düşer. |
 
 Claude Code statusLine kotalarını almak için `~/.claude/settings.json` dosyasına şu bölümü ekleyin (yolu değiştirin):
 
