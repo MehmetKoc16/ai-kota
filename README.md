@@ -71,7 +71,7 @@ The data directory is `%LOCALAPPDATA%\kota\` (configurable via `KOTA_DIZIN`). Th
 | --- | --- | --- |
 | OpenAI Codex CLI | Latest `rate_limits` record in `~/.codex/sessions/**/*.jsonl` | Updates only while Codex runs |
 | Google Antigravity CLI (`agy`) | `agy -p "/usage" --output-format json` | 120-second cache |
-| Claude Code (optional) | `claude.json` in the data directory | Written by the user or an automation script using the Claude Code desktop app usage card window format (`label`, `percentUsed`, `resetsAt`). When missing, the Claude card shows `claude.json yok` |
+| Claude Code | Claude Code CLI SDK `get_usage` | Existing Claude Code login; no model call or quota usage; 120-second cache. |
 
 To collect Claude Code statusLine quotas, add this to `~/.claude/settings.json` (replace the path):
 

@@ -148,8 +148,11 @@ class TestKota(unittest.TestCase):
             },
         )
         self.ortam_yama.start()
+        self.cli_yama = patch.object(kota, "_claude_exe_bul", return_value=None)
+        self.cli_yama.start()
 
     def tearDown(self) -> None:
+        self.cli_yama.stop()
         self.ortam_yama.stop()
         self.gecici.cleanup()
 
@@ -313,6 +316,79 @@ class TestKota(unittest.TestCase):
         self.assertEqual(sonuc["durum"], "ok")
         adlar = [p["ad"] for p in sonuc["pencereler"]]
         self.assertEqual(adlar, ["5s", "haftalik", "haftalik-fable"])
+
+    def _cli_kotalari(self):
+        return {"rate_limits_available": True, "rate_limits": {
+            "five_hour": {"utilization": 21, "resets_at": "2026-11-18T11:00:00.355219+00:00"},
+            "seven_day": {"utilization": 39, "resets_at": "2026-11-19T15:00:00.355238+00:00"},
+        }}
+
+    def test_claude_cli_birincil_kaynak(self) -> None:
+        """NEDEN: Daha yeni CLI kullanım yanıtının eski claude.json kaynağını geçtiğini doğrular."""
+        eski = self.kota_dizin / "claude.json"
+        eski.write_text(json.dumps({"windows": [
+            {"label": "5-hour limit", "percentUsed": 5},
+            {"label": "Weekly · all models", "percentUsed": 1},
+        ]}), encoding="utf-8")
+        os.utime(eski, (SIMDI.timestamp() - 60,)*2)
+        with patch.object(kota, "_claude_exe_bul", return_value=Path("claude.exe")), patch.object(kota, "_claude_cli_istek", return_value=self._cli_kotalari()):
+            sonuc = kota.claude_oku(SIMDI)
+        self.assertEqual([p["kullanilan"] for p in sonuc["pencereler"]], [21, 39])
+        self.assertTrue(all(p["sifirlanma"] for p in sonuc["pencereler"]))
+        self.assertEqual(sonuc["durum"], "ok")
+
+    def test_claude_cli_onbellek_120_sn(self) -> None:
+        """NEDEN: 120 saniyelik CLI önbelleğinin ikinci çağrıda tekrar istek yapmadığını doğrular."""
+        with patch.object(kota, "_claude_exe_bul", return_value=Path("claude.exe")), patch.object(kota, "_claude_cli_istek", return_value=self._cli_kotalari()) as istek:
+            kota.claude_cli_oku(SIMDI)
+            kota.claude_cli_oku(SIMDI + timedelta(seconds=60))
+        istek.assert_called_once()
+
+    def test_claude_cli_hata_eski_kaynaga_duser(self) -> None:
+        """NEDEN: CLI hatası ve önbellek yokluğunda claude.json okumaya devam edildiğini doğrular."""
+        yol = self.kota_dizin / "claude.json"
+        yol.write_text(json.dumps(ORNEK_CLAUDE_JSON), encoding="utf-8")
+        os.utime(yol, (SIMDI.timestamp(),)*2)
+        with patch.object(kota, "_claude_exe_bul", return_value=Path("claude.exe")), patch.object(kota, "_claude_cli_istek", side_effect=RuntimeError("hata")):
+            sonuc = kota.claude_oku(SIMDI)
+        self.assertEqual(sonuc["durum"], "ok")
+        self.assertEqual(sonuc["pencereler"][0]["kullanilan"], 33)
+
+    def test_claude_cli_calistir_false(self) -> None:
+        """NEDEN: calistir=False iken CLI isteğinin başlatılmadığını doğrular."""
+        with patch.object(kota, "_claude_cli_istek") as istek:
+            self.assertIsNone(kota.claude_cli_oku(SIMDI, calistir=False))
+        istek.assert_not_called()
+
+    def test_claude_cli_istek_protokolu(self) -> None:
+        """NEDEN: SDK initialize/get_usage isteklerinin iki satır olarak yazılıp yanıtın çözüldüğünü doğrular."""
+        class SahteStdin(io.BytesIO):
+            def close(self):
+                self.deger = self.getvalue()
+        class SahtePopen:
+            son_ornek = None
+            def __init__(self, *args, **kwargs):
+                SahtePopen.son_ornek = self
+                self.stdin = SahteStdin()
+                self.stdout = io.BytesIO(b'{"type":"control_response","response":{"request_id":"kota-init"}}\n' + json.dumps({"type":"control_response", "response":{"subtype":"success", "request_id":"kota-usage", "response":self_outer._cli_kotalari()}}).encode() + b"\n")
+                self.returncode = None
+            def wait(self, timeout=None): self.returncode = 0; return 0
+            def poll(self): return self.returncode
+            def kill(self): self.returncode = -9
+        self_outer = self
+        with patch.object(kota.subprocess, "Popen", SahtePopen):
+            sonuc = kota._claude_cli_istek(Path("claude.exe"))
+        self.assertEqual(sonuc, self._cli_kotalari())
+        self.assertEqual(len(SahtePopen.son_ornek.stdin.deger.splitlines()), 2)
+
+    def test_claude_cli_null_ve_bilinmeyen_atlanir(self) -> None:
+        """NEDEN: Null opus ve tanınmayan cinder_cove pencerelerinin sonuca eklenmediğini doğrular."""
+        rate_limits = self._cli_kotalari()["rate_limits"]
+        rate_limits["seven_day_opus"] = None
+        rate_limits["cinder_cove"] = {"utilization": 99}
+        with patch.object(kota, "_claude_exe_bul", return_value=Path("claude.exe")), patch.object(kota, "_claude_cli_istek", return_value={"rate_limits_available": True, "rate_limits": rate_limits}):
+            sonuc = kota.claude_oku(SIMDI)
+        self.assertEqual([p["ad"] for p in sonuc["pencereler"]], ["5s", "haftalik"])
 
     def test_claude_ev_dizinindeki_elle_dosya_okunur(self) -> None:
         """NEDEN: Claude masaüstü (MSIX) AppData yazımlarını yönlendirdiği için get_usage verisi ~/.kota/claude.json'dan da okunmalı."""

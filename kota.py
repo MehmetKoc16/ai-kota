@@ -10,6 +10,10 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
+import threading
+import queue
 from typing import Any
 
 
@@ -553,13 +557,124 @@ def _claude_reset_zamani(tur: str, kaynak: dict, alan: str, ad: str) -> float | 
     return None
 
 
-def claude_oku(simdi: datetime | None = None) -> dict[str, Any]:
+def _claude_exe_bul() -> Path | None:
+    """Claude Code CLI çalıştırılabilir dosyasını bilinen konumlarda arar."""
+    adaylar: list[Path] = []
+    ortam = os.environ.get("KOTA_CLAUDE_EXE")
+    if ortam:
+        adaylar.append(Path(ortam))
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        adaylar.append(Path(appdata) / "npm" / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe")
+    for aday in adaylar:
+        if aday.is_file():
+            return aday
+    for ad in ("claude.exe", "claude.cmd"):
+        bulunan = shutil.which(ad)
+        if bulunan:
+            return Path(bulunan)
+    return None
+
+
+def _claude_cli_istek(exe: Path, zaman_asimi: float = 30) -> dict[str, Any]:
+    """Claude Code SDK kontrol isteğiyle kullanım limitlerini alır."""
+    komut = [str(exe), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence"]
+    ayarlar: dict[str, Any] = {"stdin": subprocess.PIPE, "stdout": subprocess.PIPE, "stderr": subprocess.DEVNULL, "cwd": tempfile.gettempdir()}
+    if sys.platform == "win32":
+        ayarlar["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        proc = subprocess.Popen(komut, **ayarlar)
+    except OSError as exc:
+        raise RuntimeError("Claude Code CLI başlatılamadı") from exc
+    satirlar: queue.Queue[bytes | None] = queue.Queue()
+    def oku() -> None:
+        try:
+            assert proc.stdout is not None
+            for satir in iter(proc.stdout.readline, b""):
+                satirlar.put(satir)
+        finally:
+            satirlar.put(None)
+    okuyucu = threading.Thread(target=oku, daemon=True)
+    okuyucu.start()
+    try:
+        assert proc.stdin is not None
+        for request_id, request in (("kota-init", {"subtype": "initialize"}), ("kota-usage", {"subtype": "get_usage", "skip_behaviors": True})):
+            proc.stdin.write((json.dumps({"type": "control_request", "request_id": request_id, "request": request}) + "\n").encode("utf-8"))
+        proc.stdin.flush()
+        son = time.monotonic() + zaman_asimi
+        while True:
+            kalan = son - time.monotonic()
+            if kalan <= 0:
+                raise RuntimeError("Claude Code CLI zaman aşımına uğradı")
+            try:
+                satir = satirlar.get(timeout=kalan)
+            except queue.Empty:
+                raise RuntimeError("Claude Code CLI zaman aşımına uğradı")
+            if satir is None:
+                raise RuntimeError("Claude Code CLI yanıt vermedi")
+            try:
+                veri = json.loads(satir.decode("utf-8", errors="replace"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            yanit = veri.get("response") if isinstance(veri, dict) and veri.get("type") == "control_response" else None
+            if not isinstance(yanit, dict) or yanit.get("request_id") != "kota-usage":
+                continue
+            proc.stdin.close()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            if yanit.get("subtype") != "success":
+                raise RuntimeError("Claude Code kullanım isteği başarısız")
+            payload = yanit.get("response")
+            if not isinstance(payload, dict) or not payload.get("rate_limits_available") or not isinstance(payload.get("rate_limits"), dict):
+                raise RuntimeError("Claude Code kota verisi kullanılamıyor")
+            return payload
+    except Exception:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        raise
+
+
+def claude_cli_oku(simdi: datetime | None = None, calistir: bool = True) -> dict[str, Any] | None:
+    """CLI kota verisini 120 saniyelik önbellekten veya doğrudan alır."""
+    simdi_dt = _simdi_al(simdi)
+    yol = veri_dizini() / "claude_cli_onbellek.json"
+    onbellek = None
+    try:
+        veri = json.loads(yol.read_text(encoding="utf-8"))
+        if isinstance(veri, dict) and isinstance(veri.get("zaman"), (int, float)) and isinstance(veri.get("rate_limits"), dict):
+            onbellek = veri
+    except (OSError, ValueError):
+        pass
+    if onbellek is not None and simdi_dt.timestamp() - onbellek["zaman"] < 120:
+        return onbellek
+    if calistir:
+        try:
+            exe = _claude_exe_bul()
+            if exe is None:
+                raise RuntimeError("Claude Code CLI bulunamadı")
+            yeni = {"zaman": simdi_dt.timestamp(), "rate_limits": _claude_cli_istek(exe)["rate_limits"]}
+            tmp = yol.with_name(yol.name + ".tmp")
+            tmp.write_text(json.dumps(yeni, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, yol)
+            return yeni
+        except Exception:
+            pass
+    return onbellek
+
+
+def claude_oku(simdi: datetime | None = None, calistir: bool = True) -> dict[str, Any]:
     """En yeni yerel Claude ölçümünü okur."""
     simdi_dt = _simdi_al(simdi)
     dizin = veri_dizini()
     ayar = _ayar_oku(dizin)
     hak = _sifirlama_hakki_al(ayar, "claude")
     claude_yolu = dizin / "claude.json"
+
+    cli = claude_cli_oku(simdi_dt, calistir=calistir)
 
     durum_yolu = _claude_durum_yolu()
     adaylar: list[tuple[float, Path, str]] = []
@@ -584,6 +699,28 @@ def claude_oku(simdi: datetime | None = None) -> dict[str, Any]:
             secilen = (mtime, yol, tur, veri)
         kaynaklar.append((tur, veri))
     masaustu = max(_claude_masaustu_ornekleri(), key=lambda kayit: kayit[0], default=None)
+    if cli is not None:
+        cli_yaeni = float(cli["zaman"])
+        cli_taze = simdi_dt.timestamp() - cli_yaeni <= 600
+        if cli_taze or ((secilen is None or cli_yaeni >= secilen[0]) and (masaustu is None or cli_yaeni >= masaustu[0])):
+            cli_pencereler = []
+            for alan, pencere in cli["rate_limits"].items():
+                if not isinstance(pencere, dict):
+                    continue
+                if alan == "five_hour":
+                    ad, dakika = "5s", 300
+                elif alan == "seven_day":
+                    ad, dakika = "haftalik", 10080
+                elif alan.startswith("seven_day_"):
+                    ad, dakika = "haftalik-" + alan[len("seven_day_"):], 10080
+                else:
+                    continue
+                if pencere.get("utilization") is None:
+                    continue
+                cli_pencereler.append(_pencere_olustur(ad, float(pencere["utilization"]), _iso_coz(pencere.get("resets_at"), simdi_dt.tzinfo), dakika, simdi_dt))
+            if cli_pencereler:
+                cli_dt = datetime.fromtimestamp(cli_yaeni, tz=timezone.utc).astimezone(simdi_dt.tzinfo)
+                return {"ad": "claude", "aile": "claude", "durum": "bayat" if simdi_dt - cli_dt > timedelta(minutes=60) else "ok", "hata": None, "veri_zamani": _iso_yaz(cli_dt), "etiket": etiket_belirle(cli_pencereler), "sifirlama_hakki": hak, "pencereler": cli_pencereler}
     if masaustu is not None and (secilen is None or masaustu[0] > secilen[0]):
         secilen = masaustu
         # Masaüstü yüzdeleri günceldir, sıfırlanma saatleri diğer kaynaklarda bulunur.
@@ -655,7 +792,7 @@ def topla(simdi: datetime | None = None, agy_calistir: bool = True) -> dict[str,
         )
 
     try:
-        saglayicilar.append(claude_oku(simdi_dt))
+        saglayicilar.append(claude_oku(simdi_dt, calistir=agy_calistir))
     except Exception as exc:
         saglayicilar.append(
             _hata_saglayici("claude", "claude", str(exc), _sifirlama_hakki_al(ayar, "claude"))
