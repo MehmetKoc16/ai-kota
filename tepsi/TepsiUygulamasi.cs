@@ -276,7 +276,10 @@ public sealed class TepsiUygulamasi : ApplicationContext
                                 return;
                             _yenileniyor = false;
                             _panel.Yenileniyor = false;
-                            _sonrakiYenileme = DateTimeOffset.Now.AddMinutes(5);
+                            // Açılışta ağ/agy/Claude hazır değilken alınan hata 5 dk ekranda kalmasın.
+                            var okunan = KotaVerisi.Oku(_kotaJsonYolu);
+                            bool hataVar = okunan?.Saglayicilar?.Any(s => s.Durum == "hata") ?? true;
+                            _sonrakiYenileme = DateTimeOffset.Now.AddMinutes(hataVar ? 1 : 5);
                             VeriyiYenidenYukle();
                         });
                     }
