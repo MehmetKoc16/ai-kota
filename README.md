@@ -8,7 +8,7 @@ A Windows system tray icon and popup panel that displays subscription quotas for
 
 ## Features
 
-- **Supported agents:** OpenAI Codex CLI, Google Antigravity CLI (`agy`: Gemini group, Argon, Claude/GPT group inside `agy`), and Claude Code (optional).
+- **Supported agents:** OpenAI Codex CLI, Google Antigravity CLI (`agy`: Gemini group, Argon (older agy versions), Claude/GPT group inside `agy`), and Claude Code (optional).
 - **Tray icon:** Ring indicator filled by the most critical family's usage percentage and colored by status label (green for plenty, blue for normal, yellow for tight, red for full), with a summary tooltip on hover.
 - **Popup panel:** Dark Windows 11-style rounded panel with a card per provider, 5-hour and weekly window bars, pacing marker (elapsed fraction of the window), depletion estimate (such as `~20sa 50dk'da biter` when current pace would exhaust quota before reset), time remaining until reset, and stale/error states.
 - **Right-click menu:** Refresh now (`Şimdi yenile`), start with Windows (`Windows açılışında başlat`), and Exit (`Çık`). The UI language is currently Turkish.

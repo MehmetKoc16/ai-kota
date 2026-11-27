@@ -24,6 +24,7 @@ AGY_GRUP_ESLEME = {
 }
 
 AGY_SAGLAYICILAR = ("gemini", "argon", "agy-claude-gpt")
+AGY_ISTEGE_BAGLI = ("argon",)
 
 
 def _simdi_al(simdi: datetime | None = None) -> datetime:
@@ -345,6 +346,7 @@ def _agy_hata_listesi(ayar: dict[str, Any], hata: str) -> list[dict[str, Any]]:
     return [
         _hata_saglayici(ad, "agy", hata, _sifirlama_hakki_al(ayar, ad))
         for ad in AGY_SAGLAYICILAR
+        if ad not in AGY_ISTEGE_BAGLI
     ]
 
 
@@ -479,6 +481,8 @@ def agy_oku(simdi: datetime | None = None, calistir: bool = True) -> list[dict[s
     for ad in AGY_SAGLAYICILAR:
         if ad in saglayici_haritasi:
             sonuclar.append(saglayici_haritasi[ad])
+        elif ad in AGY_ISTEGE_BAGLI:
+            continue
         else:
             sonuclar.append(
                 _hata_saglayici(

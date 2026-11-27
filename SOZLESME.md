@@ -9,7 +9,7 @@ Veri klasörü: `%LOCALAPPDATA%\kota\` (yoksa oluşturulur). Testlerde `KOTA_DIZ
    Testlerde `KOTA_CODEX_DIZIN` ortam değişkeni `~/.codex/sessions` yerine geçer.
 2. agy: `agy.exe -p "/usage" --output-format json` (yol: `%LOCALAPPDATA%\agy\bin\agy.exe`, zaman aşımı 60 sn, stdin kapalı).
    Örnek çıktı: `ornek/agy_usage.json`. `command.data.groups[].buckets[]`: `window` ("5h"|"weekly"), `remaining_fraction`, `reset_time` (ISO).
-   Grup adları: "Gemini Models" -> ad "gemini"; "Claude and GPT models" -> "agy-claude-gpt"; "Gemini 4 Argon" -> "argon".
+   Grup adları: "Gemini Models" -> ad "gemini"; "Claude and GPT models" -> "agy-claude-gpt"; "Gemini 4 Argon" -> "argon" (isteğe bağlı; agy 1.5.18'den itibaren yok, yoksa listede yer almaz).
    Sonuç `agy_onbellek.json`'a yazılır; 120 sn'den yeniyse agy yeniden çağrılmaz.
 3. Claude: önce Claude Code CLI SDK `get_usage` kontrol isteği kullanılır (Claude Code'un kendi girişi; model çağrısı yok, kota harcamaz; 120 sn önbellek). CLI verisi 10 dakikadan tazeyse doğrudan, değilse diğer kaynaklardan yeni ya da eşitse seçilir. CLI başarısız olursa yerel kaynaklar kullanılır: veri dizinindeki orkestratör `claude.json` (örnek: `ornek/claude_usage.json`) veya `KOTA_CLAUDE_DURUM` / `~/.kota/claude_durum.json` konumundaki statusLine dosyası; ikisi varsa mtime'ı yeni olan geçerlidir. `claude_durum_satiri.py`, Claude Code stdin'indeki `rate_limits` alanını yazar. `five_hour` -> "5s",
    `seven_day` -> "haftalik". `claude.json` etiketleri: "5-hour limit" -> "5s",

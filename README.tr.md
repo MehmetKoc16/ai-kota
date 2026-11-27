@@ -8,7 +8,7 @@ Yapay zekâ kodlama ajanlarının abonelik kotalarını tek yerde gösteren Wind
 
 ## Özellikler
 
-- **Desteklenen ajanlar:** OpenAI Codex CLI, Google Antigravity CLI (`agy`: Gemini grubu, Argon, `agy` içindeki Claude/GPT grubu) ve Claude Code (isteğe bağlı).
+- **Desteklenen ajanlar:** OpenAI Codex CLI, Google Antigravity CLI (`agy`: Gemini grubu, Argon (eski agy sürümlerinde), `agy` içindeki Claude/GPT grubu) ve Claude Code (isteğe bağlı).
 - **Simge:** En kritik ailenin kullanım yüzdesi kadar dolan halka; rengi etikete göre değişir (bol yeşil, normal mavi, dar sarı, dolu kırmızı). Üzerine gelince özet ipucu gösterir.
 - **Panel:** Windows 11 tarzı koyu, yuvarlak köşeli. Her sağlayıcı için kart; 5 saatlik ve haftalık pencere çubukları; tempo işareti (pencerenin geçen kısmı); bu hızla sıfırlanmadan önce bitecekse `"~20sa 50dk'da biter"` tahmini; sıfırlanmaya kalan süre; bayat/hata durumu.
 - **Sağ tık menüsü:** Şimdi yenile, Windows açılışında başlat, Çık. Arayüz dili şu an Türkçedir.

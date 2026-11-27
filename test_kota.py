@@ -305,6 +305,25 @@ class TestKota(unittest.TestCase):
         self.assertEqual(claude_gpt_p["5s"]["kullanilan"], 0.0)
         self.assertEqual(claude_gpt_p["haftalik"]["kullanilan"], 0.0)
 
+    def test_agy_argon_olmayan_cikti(self) -> None:
+        """NEDEN: Argon grubu olmayan yeni agy çıktısında isteğe bağlı grubun listelenmediğini doğrular."""
+        onbellek = self.kota_dizin / "agy_onbellek.json"
+        veri = json.loads(json.dumps(ORNEK_AGY_JSON))
+        veri["command"]["data"]["groups"] = [
+            grup for grup in veri["command"]["data"]["groups"]
+            if grup["name"] != "Gemini 4 Argon"
+        ]
+        onbellek.write_text(json.dumps(veri), encoding="utf-8")
+
+        sonuclar = kota.agy_oku(simdi=SIMDI, calistir=False)
+        self.assertEqual({s["ad"] for s in sonuclar}, {"gemini", "agy-claude-gpt"})
+        self.assertTrue(all(s["durum"] != "hata" for s in sonuclar))
+
+    def test_agy_okunamama_hatasinda_argon_yok(self) -> None:
+        """NEDEN: agy hiç okunamadığında isteğe bağlı Argon için hata satırı üretilmediğini doğrular."""
+        sonuclar = kota._agy_hata_listesi({}, "agy kullanılamıyor")
+        self.assertEqual({s["ad"] for s in sonuclar}, {"gemini", "agy-claude-gpt"})
+
     def test_claude_ornek_okuma(self) -> None:
         """NEDEN: claude.json etiketlerinin 5s, haftalik ve haftalik-fable olarak dönüştüğünü doğrular."""
         claude_yolu = self.kota_dizin / "claude.json"
